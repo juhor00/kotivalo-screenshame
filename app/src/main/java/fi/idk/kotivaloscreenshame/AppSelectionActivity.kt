@@ -45,7 +45,10 @@ class AppSelectionActivity : AppCompatActivity() {
 
         recyclerView.layoutManager = LinearLayoutManager(this)
         recyclerView.adapter = adapter
-        recyclerView.setItemViewCacheSize(500);
+
+        // This fixes one extremely random bug where isChecked transforms from true to false when
+        // you scroll away from selected apps
+        recyclerView.setItemViewCacheSize(500)
 
         saveButton.setOnClickListener {
             saveSelectedApps()
