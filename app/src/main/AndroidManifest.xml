@@ -25,6 +25,10 @@
             android:exported="true"/>
 
         <activity
+            android:name=".AppSelectionActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".MainActivity"
             android:exported="true">
             <intent-filter>

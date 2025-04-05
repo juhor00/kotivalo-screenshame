@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.provider.Settings
+import android.widget.Button
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 
@@ -17,6 +18,11 @@ class MainActivity : AppCompatActivity() {
             requestUsageStatsPermission()
         } else {
             startAppUsageService()
+        }
+
+        findViewById<Button>(R.id.chooseAppsButton).setOnClickListener {
+            val intent = Intent(this, AppSelectionActivity::class.java)
+            startActivity(intent)
         }
     }
 
