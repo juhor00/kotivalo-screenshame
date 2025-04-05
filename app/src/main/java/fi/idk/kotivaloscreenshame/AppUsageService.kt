@@ -21,10 +21,22 @@ class AppUsageService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        logApplications()
         Handler(Looper.getMainLooper()).post {
             logUsageEvents()
         }
         return START_STICKY
+    }
+
+    private fun logApplications() {
+        val appHelper = AppHelper(this)
+        val apps = appHelper.getApps()
+
+        for (app in apps) {
+            val label = appHelper.getAppName(app)
+            val packageName = app.packageName
+            Log.i("AppUsageService", "App: $label, Package: $packageName")
+        }
     }
 
     private fun logUsageEvents() {
