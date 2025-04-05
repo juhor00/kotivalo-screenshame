@@ -3,6 +3,9 @@
     xmlns:tools="http://schemas.android.com/tools"
     package="fi.idk.kotivaloscreenshame">
 
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -13,6 +16,11 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.KotivaloScreenshame"
         tools:targetApi="31">
+        <service
+            android:name=".AppUsageService"
+            android:enabled="true"
+            android:exported="true"></service>
+
         <activity
             android:name=".MainActivity"
             android:exported="true">
