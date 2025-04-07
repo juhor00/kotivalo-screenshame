@@ -48,11 +48,33 @@ class AppUsageService : Service() {
         val usageEvents: UsageEvents = usageStatsManager.queryEvents(startTime, endTime)
         val event = UsageEvents.Event()
 
+        val appUsageMap = mutableMapOf<String, Long>()
+        val foregroundTimes = mutableMapOf<String, Long>()
+
         while (usageEvents.hasNextEvent()) {
             usageEvents.getNextEvent(event)
-            Log.i("AppUsageService", "Event: ${event.packageName}, " +
-                    "Type: ${event.eventType}, " +
-                    "Time: ${event.timeStamp}")
+            when (event.eventType) {
+                UsageEvents.Event.MOVE_TO_FOREGROUND -> {
+                    foregroundTimes[event.packageName] = event.timeStamp
+                }
+
+                UsageEvents.Event.MOVE_TO_BACKGROUND -> {
+                    val start = foregroundTimes[event.packageName]
+                    if (start != null) {
+                        val duration = event.timeStamp - start
+                        appUsageMap[event.packageName] = appUsageMap.getOrDefault(event.packageName, 0L) + duration
+                        foregroundTimes.remove(event.packageName)
+                    }
+                }
+            }
+        }
+
+        val usageThreshold = 1 * 60 * 1000L // 5 minutes in milliseconds
+
+        for ((packageName, usageTime) in appUsageMap) {
+            if (usageTime > usageThreshold) {
+                Log.i("AppUsageService", "App $packageName exceeded usage limit: ${usageTime / 60000} minutes in last 10 minutes")
+            }
         }
 
         // Schedule the next log
