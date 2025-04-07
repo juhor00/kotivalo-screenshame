@@ -25,7 +25,7 @@ class NotificationHelper(private val context: Context) {
 
     fun sendNotification(title: String, message: String) {
         val intent = Intent(context, MainActivity::class.java)
-        val pendingIntent = PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT)
+        val pendingIntent = PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
 
         val notification = NotificationCompat.Builder(context, channelId)
             .setContentTitle(title)
