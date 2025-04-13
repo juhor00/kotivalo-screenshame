@@ -8,6 +8,12 @@ import android.provider.Settings
 import android.widget.Button
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.work.Constraints
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
+import java.util.concurrent.TimeUnit
 
 class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -46,7 +52,22 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startAppUsageService() {
-        val serviceIntent = Intent(this, AppUsageService::class.java)
-        startService(serviceIntent)
+
+        val workRequest = PeriodicWorkRequestBuilder<AppUsageWorker>(
+            15, TimeUnit.MINUTES
+        )
+            .setConstraints(
+                Constraints.Builder()
+                    .setRequiredNetworkType(NetworkType.NOT_REQUIRED)
+                    .setRequiresBatteryNotLow(true)
+                    .build()
+            )
+            .build()
+
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            "AppUsageTracking",
+            ExistingPeriodicWorkPolicy.KEEP,
+            workRequest
+        )
     }
 }
