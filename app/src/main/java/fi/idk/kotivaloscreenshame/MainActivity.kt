@@ -11,6 +11,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import java.util.concurrent.TimeUnit
@@ -23,12 +24,43 @@ class MainActivity : AppCompatActivity() {
         if (!hasUsageStatsPermission()) {
             requestUsageStatsPermission()
         } else {
-            startAppUsageService()
+            startAppUsageWork()
         }
 
         findViewById<Button>(R.id.chooseAppsButton).setOnClickListener {
             val intent = Intent(this, AppSelectionActivity::class.java)
             startActivity(intent)
+        }
+
+
+
+        val debugButton = findViewById<Button>(R.id.debugButton)
+        debugButton.setOnClickListener {
+            val debugRequest = OneTimeWorkRequestBuilder<AppUsageWorker>().build()
+            WorkManager.getInstance(this).enqueue(debugRequest)
+        }
+
+        val clearHistoryButton = findViewById<Button>(R.id.clearHistoryButton)
+        clearHistoryButton.setOnClickListener {
+            val usageTracker = UsageTracker(this)
+            usageTracker.clearNotifications()
+
+            val messages = listOf(
+                "Hey! Where’d your doomscrolling go? I was enjoying the show!",
+                "Whoa, no social media? Are you okay?? 😱",
+                "You’ve ghosted your apps... proud of you 👏",
+                "Silence... too quiet. Are you hiding from me?",
+                "No screen time? Who even *are* you?",
+                "I blinked and your screen time vanished. Witchcraft?",
+                "Less scrolling, more strolling. Touching grass detected 🌱",
+                "My data says you’ve been suspiciously offline...",
+                "Hey, come back. I was just about to judge you.",
+                "Rest in peace, doomscroll session. Gone too soon. 🪦"
+            )
+
+            val randomMessage = messages.random()
+
+            Toast.makeText(this, randomMessage, Toast.LENGTH_LONG).show()
         }
     }
 
@@ -47,11 +79,11 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         if (hasUsageStatsPermission()) {
-            startAppUsageService()
+            startAppUsageWork()
         }
     }
 
-    private fun startAppUsageService() {
+    private fun startAppUsageWork() {
 
         val workRequest = PeriodicWorkRequestBuilder<AppUsageWorker>(
             15, TimeUnit.MINUTES

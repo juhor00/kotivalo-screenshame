@@ -43,15 +43,10 @@ class UsageTracker(private val context: Context) {
             Log.d("UsageTracker", "--Threshold: ${threshold.minutes} minutes within the last ${threshold.windowMinutes} minutes")
             val start = now - threshold.windowMinutes * 60 * 1000
 
-            val stats: List<UsageStats> = usageStatsManager
+            usageStatsManager
                 .queryUsageStats(UsageStatsManager.INTERVAL_DAILY, start, now)
                 .filter { it.totalTimeInForeground > 0 && trackedPackages.contains(it.packageName) }
-
-            stats.forEach { usage ->
-
-                checkStats(usage, threshold)
-
-            }
+                .forEach { checkStats(it, threshold) }
         }
     }
 
@@ -116,6 +111,11 @@ class UsageTracker(private val context: Context) {
 
     private fun markNotified(key: String) {
         notifiedPrefs.edit() { putBoolean(key, true) }
+    }
+
+    fun clearNotifications() {
+        Log.d("UsageTracker", "Clearing all notifications...")
+        notifiedPrefs.edit { clear() }
     }
 
     private fun getApplicationName(packageName: String): String {
