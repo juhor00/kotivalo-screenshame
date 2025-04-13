@@ -1,41 +1,67 @@
 package fi.idk.kotivaloscreenshame
 
+
+import android.content.pm.PackageManager
+import android.graphics.BitmapFactory
+import android.util.Log
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
+import java.util.concurrent.TimeUnit
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.Context
-import android.content.Intent
 import android.os.Build
 import androidx.core.app.NotificationCompat
 
 class NotificationHelper(private val context: Context) {
 
-    private val channelId = "kotivalo_channel"
-    private val channelName = "Kotivalo Notifications"
+    private val channelId = "kotivalo-nagger"
+    private val channelName = "Kotivalo Nagger"
 
     init {
-        createNotificationChannel()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(channelId, channelName, NotificationManager.IMPORTANCE_HIGH)
+            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            manager.createNotificationChannel(channel)
+        }
     }
 
-    private fun createNotificationChannel() {
-        val channel = NotificationChannel(channelId, channelName, NotificationManager.IMPORTANCE_HIGH)
-        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        manager.createNotificationChannel(channel)
+    fun createTrackerNotification(): Notification {
+        val channelId = "kotivalo-tracker"
+        val channelName = "Kotivalo Tracker"
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val channel = NotificationChannel(channelId, channelName, NotificationManager.IMPORTANCE_LOW)
+            notificationManager.createNotificationChannel(channel)
+        }
+
+        return NotificationCompat.Builder(context, channelId)
+            .setContentTitle("Kotivalo is judging you!")
+            .setContentText("Watching your app usage 👀")
+            .setSmallIcon(android.R.drawable.ic_menu_info_details)
+            .build()
     }
 
-    fun sendNotification(title: String, message: String) {
-        val intent = Intent(context, MainActivity::class.java)
-        val pendingIntent = PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+    fun sendNaggyNotification(appName: String, message: String) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            Log.w("NotificationHelper", "Missing POST_NOTIFICATIONS permission, can't notify.")
+            return
+        }
 
+        val bigImage = BitmapFactory.decodeResource(context.resources, R.drawable.kotivalo4_icon)
         val notification = NotificationCompat.Builder(context, channelId)
-            .setContentTitle(title)
+            .setSmallIcon(android.R.drawable.ic_dialog_alert)
+            .setContentTitle("Kotivalo is not pleased!")
             .setContentText(message)
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setContentIntent(pendingIntent)
-            .setAutoCancel(true)
+            .setStyle(NotificationCompat.BigPictureStyle().bigPicture(bigImage))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
             .build()
 
-        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        manager.notify(1, notification)
+        NotificationManagerCompat.from(context).notify(appName.hashCode(), notification)
     }
 }

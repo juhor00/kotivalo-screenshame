@@ -1,6 +1,5 @@
 package fi.idk.kotivaloscreenshame
 
-import android.content.Context.MODE_PRIVATE
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
