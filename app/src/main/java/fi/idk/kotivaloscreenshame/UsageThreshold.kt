@@ -1,7 +1,6 @@
 package fi.idk.kotivaloscreenshame
 
 data class UsageThreshold(
-    val minutes: Long,
-    val windowMinutes: Long,
-    val notificationMessage: String
+    val severity: Int,
+    val minutes: Int
 )

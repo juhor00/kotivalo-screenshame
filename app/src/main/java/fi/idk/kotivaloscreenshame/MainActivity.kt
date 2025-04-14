@@ -3,6 +3,7 @@ package fi.idk.kotivaloscreenshame
 import android.app.AppOpsManager
 import android.content.Context
 import android.content.Intent
+import android.icu.util.Calendar
 import android.os.Bundle
 import android.provider.Settings
 import android.widget.Button
@@ -23,16 +24,15 @@ class MainActivity : AppCompatActivity() {
 
         if (!hasUsageStatsPermission()) {
             requestUsageStatsPermission()
-        } else {
-            startAppUsageWork()
         }
+        // Schedule anyways
+        scheduleTracking()
+        scheduleNotificationCleanup()
 
         findViewById<Button>(R.id.chooseAppsButton).setOnClickListener {
             val intent = Intent(this, AppSelectionActivity::class.java)
             startActivity(intent)
         }
-
-
 
         val debugButton = findViewById<Button>(R.id.debugButton)
         debugButton.setOnClickListener {
@@ -40,11 +40,12 @@ class MainActivity : AppCompatActivity() {
             WorkManager.getInstance(this).enqueue(debugRequest)
         }
 
-        val clearHistoryButton = findViewById<Button>(R.id.clearHistoryButton)
-        clearHistoryButton.setOnClickListener {
+        val resetNotificationsButton = findViewById<Button>(R.id.resetNotificationButton)
+        resetNotificationsButton.setOnClickListener {
             val usageTracker = UsageTracker(this)
             usageTracker.clearNotifications()
 
+            // TODO: Move to Kotivalo class or something
             val messages = listOf(
                 "Hey! Where’d your doomscrolling go? I was enjoying the show!",
                 "Whoa, no social media? Are you okay?? 😱",
@@ -76,15 +77,7 @@ class MainActivity : AppCompatActivity() {
         startActivity(intent)
     }
 
-    override fun onResume() {
-        super.onResume()
-        if (hasUsageStatsPermission()) {
-            startAppUsageWork()
-        }
-    }
-
-    private fun startAppUsageWork() {
-
+    private fun scheduleTracking() {
         val workRequest = PeriodicWorkRequestBuilder<AppUsageWorker>(
             15, TimeUnit.MINUTES
         )
@@ -100,6 +93,37 @@ class MainActivity : AppCompatActivity() {
             "AppUsageTracking",
             ExistingPeriodicWorkPolicy.KEEP,
             workRequest
+        )
+    }
+
+    private fun scheduleNotificationCleanup() {
+        val now = Calendar.getInstance()
+        val midnight = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+            add(Calendar.DAY_OF_MONTH, 1) // Move to the next day
+        }
+
+        val initialDelay = midnight.timeInMillis - now.timeInMillis
+
+        val cleanupRequest = PeriodicWorkRequestBuilder<NotificationResetWorker>(
+            1, TimeUnit.DAYS
+        )
+            .setInitialDelay(initialDelay, TimeUnit.MILLISECONDS)
+            .setConstraints(
+                Constraints.Builder()
+                    .setRequiredNetworkType(NetworkType.NOT_REQUIRED)
+                    .setRequiresBatteryNotLow(false)
+                    .build()
+            )
+            .build()
+
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            "NotificationReset",
+            ExistingPeriodicWorkPolicy.KEEP,
+            cleanupRequest
         )
     }
 }

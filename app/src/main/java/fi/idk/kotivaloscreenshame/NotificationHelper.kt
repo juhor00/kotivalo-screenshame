@@ -9,6 +9,7 @@ import androidx.core.content.ContextCompat
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.graphics.drawable.Drawable
 import android.os.Build
 import androidx.core.app.NotificationCompat
 
@@ -25,7 +26,32 @@ class NotificationHelper(private val context: Context) {
         }
     }
 
-    fun sendNaggyNotification(appName: String, message: String) {
+    fun sendNotificationForApp(appName: String, severity: Int, minutes: Long) {
+        val message = when (severity) {
+            1 -> "You have used $appName for $minutes minutes. Kotivalo is not pleased!"
+            2 -> "You have used $appName for $minutes minutes. Kotivalo is very displeased!"
+            3 -> "You have used $appName for $minutes minutes. Kotivalo is extremely displeased!"
+            4 -> "You have used $appName for $minutes minutes. Kotivalo is furious!"
+            5 -> "You have used $appName for $minutes minutes. Kotivalo is enraged!"
+            else -> "You have used $appName for $minutes minutes. Kotivalo is not pleased!"
+        }
+        sendNotification(appName.hashCode(), "Kotivalo is not pleased!", message, R.drawable.kotivalo4_icon, android.R.drawable.ic_dialog_alert)
+    }
+
+    fun sendCombinedNotification(appNames: List<String>, severity: Int, totalMinutes: Long) {
+        val message = when (severity) {
+            1 -> "You have used ${appNames.size} apps for a total of $totalMinutes minutes. Kotivalo is not pleased!"
+            2 -> "You have used ${appNames.size} apps for a total of $totalMinutes minutes. Kotivalo is very displeased!"
+            3 -> "You have used ${appNames.size} apps for a total of $totalMinutes minutes. Kotivalo is extremely displeased!"
+            4 -> "You have used ${appNames.size} apps for a total of $totalMinutes minutes. Kotivalo is furious!"
+            5 -> "You have used ${appNames.size} apps for a total of $totalMinutes minutes. Kotivalo is enraged!"
+            else -> "You have used ${appNames.size} apps for a total of $totalMinutes minutes. Kotivalo is not pleased!"
+        }
+        // Create the notification with the combined message
+        sendNotification(appNames.hashCode(), "Kotivalo is not pleased!", message, R.drawable.kotivalo4_icon, android.R.drawable.ic_dialog_alert)
+    }
+
+    private fun sendNotification(notificationId: Int, title: String, message: String, image: Int, icon: Int) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS)
             != PackageManager.PERMISSION_GRANTED
@@ -34,15 +60,15 @@ class NotificationHelper(private val context: Context) {
             return
         }
 
-        val bigImage = BitmapFactory.decodeResource(context.resources, R.drawable.kotivalo4_icon)
+        val bigImage = BitmapFactory.decodeResource(context.resources, image)
         val notification = NotificationCompat.Builder(context, channelId)
-            .setSmallIcon(android.R.drawable.ic_dialog_alert)
-            .setContentTitle("Kotivalo is not pleased!")
+            .setSmallIcon(icon)
+            .setContentTitle(title)
             .setContentText(message)
             .setStyle(NotificationCompat.BigPictureStyle().bigPicture(bigImage))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .build()
 
-        NotificationManagerCompat.from(context).notify(appName.hashCode(), notification)
+        NotificationManagerCompat.from(context).notify(notificationId, notification)
     }
 }

@@ -4,9 +4,9 @@ import android.app.usage.UsageStats
 import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.pm.PackageManager
+import android.icu.util.Calendar
 import android.util.Log
 import androidx.core.content.edit
-import java.util.concurrent.TimeUnit
 
 class UsageTracker(private val context: Context) {
 
@@ -17,17 +17,51 @@ class UsageTracker(private val context: Context) {
         context.getSharedPreferences("tracked_apps", Context.MODE_PRIVATE)
     private val notifiedPrefs =
         context.getSharedPreferences("already_notified", Context.MODE_PRIVATE)
+    private val severityKey = "severity"
 
-    private val thresholds = listOf(
+    private val singleAppThresholds = listOf(
         UsageThreshold(
-            minutes = 1,
-            windowMinutes = 10,
-            notificationMessage = "👀 Spent over a minute in just 10 mins on %s!"
+            severity = 1,
+            minutes = 20
         ),
         UsageThreshold(
-            minutes = 10,
-            windowMinutes = 60,
-            notificationMessage = "⌛ Over 10 minutes in the last hour on %s. Touch grass?"
+            severity = 2,
+            minutes = 40
+        ),
+        UsageThreshold(
+            severity = 3,
+            minutes = 60
+        ),
+        UsageThreshold(
+            severity = 4,
+            minutes = 90
+        ),
+        UsageThreshold(
+            severity = 5,
+            minutes = 120
+        )
+    )
+
+    private val multiAppThresholds = listOf(
+        UsageThreshold(
+            severity = 1,
+            minutes = 45
+        ),
+        UsageThreshold(
+            severity = 2,
+            minutes = 90
+        ),
+        UsageThreshold(
+            severity = 3,
+            minutes = 120
+        ),
+        UsageThreshold(
+            severity = 4,
+            minutes = 180
+        ),
+        UsageThreshold(
+            severity = 5,
+            minutes = 240
         )
     )
 
@@ -36,81 +70,84 @@ class UsageTracker(private val context: Context) {
 
     suspend fun checkAppUsage() {
         Log.d("UsageTracker", "App usage...")
-        val now = System.currentTimeMillis()
+        val calendar: Calendar = Calendar.getInstance()
+        val endTime: Long = calendar.timeInMillis
+        calendar.add(Calendar.DAY_OF_MONTH, -1) // Go back one day
+        val startTime: Long = calendar.timeInMillis
+        val allUsageStats = ArrayList<UsageStats>()
 
-        thresholds.forEach { threshold ->
+        usageStatsManager
+            .queryUsageStats(UsageStatsManager.INTERVAL_DAILY, startTime, endTime)
+            .filter { it.totalTimeInForeground > 0 && trackedPackages.contains(it.packageName) }
+            .toCollection(allUsageStats)
 
-            Log.d("UsageTracker", "--Threshold: ${threshold.minutes} minutes within the last ${threshold.windowMinutes} minutes")
-            val start = now - threshold.windowMinutes * 60 * 1000
-
-            usageStatsManager
-                .queryUsageStats(UsageStatsManager.INTERVAL_DAILY, start, now)
-                .filter { it.totalTimeInForeground > 0 && trackedPackages.contains(it.packageName) }
-                .forEach { checkStats(it, threshold) }
+        val notifiedCombined = checkCombinedUsageThresholds(allUsageStats)
+        if (notifiedCombined) {
+            return
         }
+        checkSingleAppUsageThresholds(allUsageStats)
     }
 
-    private fun checkStats(usage: UsageStats, threshold: UsageThreshold) {
-        val hours = TimeUnit.MILLISECONDS.toHours(usage.totalTimeInForeground)
-        val minutes = TimeUnit.MILLISECONDS.toMinutes(usage.totalTimeInForeground) % 60
-        val seconds = TimeUnit.MILLISECONDS.toSeconds(usage.totalTimeInForeground) % 60
-        Log.d("UsageTracker", "App ${usage.packageName} usage: ${hours}h ${minutes}m ${seconds}s")
+    private fun checkCombinedUsageThresholds(
+        allUsageStats: List<UsageStats>
+    ): Boolean {
+        return multiAppThresholds.reversed().firstOrNull {notifyCombinedAppUsage(allUsageStats, it) } != null
+    }
 
+    private fun checkSingleAppUsageThresholds(
+        allUsageStats: List<UsageStats>
+    ): Boolean {
+        // Get the most used app
+        val mostUsedApp = allUsageStats.maxByOrNull { it.totalTimeInForeground }
+        if (mostUsedApp == null) {
+            return false
+        }
+        return singleAppThresholds.reversed().firstOrNull { notifyAppUsage(mostUsedApp, it) } != null
+
+    }
+
+
+    private fun notifyCombinedAppUsage(allUsageStats: List<UsageStats>, threshold: UsageThreshold): Boolean {
+        if (getLastNotifiedSeverity() >= threshold.severity) {
+            Log.d("UsageTracker", "Do not notify combined app usage. Already notified for severity ${threshold.severity}.")
+            return true // This severity has already been notified, no need to check lower severities
+        }
+
+        val totalUsageMinutes = allUsageStats.sumOf { it.totalTimeInForeground } / 60000
+        if (totalUsageMinutes < threshold.minutes) {
+            return false // Maybe lower severity will be notified
+        }
+
+        val appNames = allUsageStats.map { it.packageName }.map { getApplicationName(it) }
+        Log.i("UsageTracker", "Notify combined app usage for severity ${threshold.severity}")
+        notifier.sendCombinedNotification(appNames, threshold.severity, totalUsageMinutes)
+        markNotified(threshold.severity)
+        return true
+
+    }
+
+    private fun notifyAppUsage(usage: UsageStats, threshold: UsageThreshold): Boolean {
+        if (getLastNotifiedSeverity() >= threshold.severity) {
+            Log.d("UsageTracker", "Do not notify app usage. Already notified for severity ${threshold.severity}.")
+            return true
+        }
         val usedMinutes = usage.totalTimeInForeground / 60000
-        if (usedMinutes >= threshold.minutes) {
-            notifyAppUsage(usage.packageName, threshold)
+        if (usedMinutes < threshold.minutes) {
+           return false
         }
+        val appName = getApplicationName(usage.packageName)
+        Log.i("UsageTracker", "Notify app usage for severity ${threshold.severity}")
+        notifier.sendNotificationForApp(appName, threshold.severity, usedMinutes)
+        markNotified(threshold.severity)
+        return true
     }
 
-    private fun notifyAppUsage(packageName: String, threshold: UsageThreshold) {
-        val key = "${packageName}_${threshold.minutes}_${threshold.windowMinutes}"
-        if (!hasAlreadyNotified(key)) {
-            val appName = getApplicationName(packageName)
-            val msg = String.format(threshold.notificationMessage, appName)
-
-            Log.i("UsageTracker", msg)
-            notifier.sendNaggyNotification(appName, msg)
-            markNotified(key)
-        } else {
-            Log.d("UsageTracker", "Already notified for $key")
-        }
-
+    private fun getLastNotifiedSeverity(): Int {
+        return notifiedPrefs.getInt(severityKey, 0)
     }
 
-    suspend fun resetNotificationsForLowUsage() {
-        Log.d("UsageTracker", "Resetting notifications for low usage...")
-        val now = System.currentTimeMillis()
-
-        thresholds.forEach { threshold ->
-            val start = now - threshold.windowMinutes * 60 * 1000
-
-            val stats: List<UsageStats> = usageStatsManager
-                .queryUsageStats(UsageStatsManager.INTERVAL_DAILY, start, now)
-                .filter { trackedPackages.contains(it.packageName) }
-
-            stats.forEach { usage ->
-                val usedMinutes = usage.totalTimeInForeground / 60000
-                if (usedMinutes < threshold.minutes) {
-                    val key = "${usage.packageName}_${threshold.minutes}_${threshold.windowMinutes}"
-                    if (hasAlreadyNotified(key)) {
-                        Log.d("UsageTracker", "Resetting notification for $key due to low usage")
-                        clearNotificationForKey(key)
-                    }
-                }
-            }
-        }
-    }
-
-    private fun clearNotificationForKey(key: String) {
-        notifiedPrefs.edit { remove(key) }
-    }
-
-    private fun hasAlreadyNotified(key: String): Boolean {
-        return notifiedPrefs.getBoolean(key, false)
-    }
-
-    private fun markNotified(key: String) {
-        notifiedPrefs.edit() { putBoolean(key, true) }
+    private fun markNotified(severity: Int) {
+        notifiedPrefs.edit() { putInt(severityKey, severity) }
     }
 
     fun clearNotifications() {
