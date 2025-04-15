@@ -11,7 +11,14 @@ class AppHelper(private val context: Context) {
         val installedApps = packageManager.getInstalledApplications(PackageManager.GET_META_DATA)
         // Exclude system apps
         return installedApps.filter { app ->
-            (app.flags and ApplicationInfo.FLAG_SYSTEM) == 0
+            // Exclude core system apps, but include updated system apps (e.g., YouTube)
+            val isSystemApp = (app.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+            val isUpdatedSystemApp = (app.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+
+            // Include only apps that either:
+            // - are NOT system apps
+            // - or are updated system apps (user-deletable)
+            !isSystemApp || isUpdatedSystemApp
         }
     }
 
