@@ -1,6 +1,7 @@
 package fi.idk.kotivaloscreenshame
 
-import android.app.usage.UsageStats
+import android.app.usage.UsageEvents
+import android.app.usage.UsageEventsQuery
 import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.pm.PackageManager
@@ -70,22 +71,83 @@ class UsageTracker(private val context: Context) {
 
     suspend fun checkAppUsage() {
         Log.d("UsageTracker", "App usage...")
-        val calendar: Calendar = Calendar.getInstance()
+        val calendar = Calendar.getInstance()
         val endTime: Long = calendar.timeInMillis
-        calendar.add(Calendar.DAY_OF_MONTH, -1) // Go back one day
-        val startTime: Long = calendar.timeInMillis
-        val allUsageStats = ArrayList<UsageStats>()
+        val startTime: Long = calendar.apply {
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
 
-        usageStatsManager
-            .queryUsageStats(UsageStatsManager.INTERVAL_DAILY, startTime, endTime)
-            .filter { it.totalTimeInForeground > 0 && trackedPackages.contains(it.packageName) }
-            .toCollection(allUsageStats)
+        val query: UsageEventsQuery = UsageEventsQuery.Builder(startTime, endTime)
+            .setPackageNames(*trackedPackages.toTypedArray())
+            .setEventTypes(UsageEvents.Event.ACTIVITY_RESUMED, UsageEvents.Event.ACTIVITY_PAUSED)
+            .build()
+        val usageEvents: UsageEvents = usageStatsManager.queryEvents(query) ?: return
+        val usageStatsList = constructUsageStats(usageEvents)
 
-        val notifiedCombined = checkCombinedUsageThresholds(allUsageStats)
+        logUsageStats(usageStatsList)
+
+        val notifiedCombined = checkCombinedUsageThresholds(usageStatsList)
         if (notifiedCombined) {
             return
         }
-        checkSingleAppUsageThresholds(allUsageStats)
+        checkSingleAppUsageThresholds(usageStatsList)
+    }
+
+    private fun constructUsageStats(usageEvents: UsageEvents): List<UsageStats> {
+
+        val appStatsMap: MutableMap<String, UsageStats> = HashMap<String, UsageStats>()
+
+        val event = UsageEvents.Event()
+        val foregroundStartMap: MutableMap<String, Long> = HashMap()
+
+        while (usageEvents.hasNextEvent()) {
+            usageEvents.getNextEvent(event)
+            val packageName = event.packageName
+
+            when (event.eventType) {
+                UsageEvents.Event.ACTIVITY_RESUMED -> foregroundStartMap[packageName] = event.timeStamp
+
+                UsageEvents.Event.ACTIVITY_PAUSED -> {
+                    val startTime = foregroundStartMap.remove(packageName)
+                    if (startTime != null) {
+                        val duration = event.timeStamp - startTime
+                        val oldStats: UsageStats = appStatsMap.getOrDefault(packageName, UsageStats(0, 0, 0, packageName))
+                        val newStats = UsageStats(
+                            firstTimeStamp = if (oldStats.firstTimeStamp == 0L) startTime else oldStats.firstTimeStamp,
+                            lastTimeStamp = oldStats.lastTimeStamp.coerceAtLeast(event.timeStamp),
+                            totalTimeInForeground = oldStats.totalTimeInForeground + duration,
+                            packageName = packageName
+                        )
+                        appStatsMap[packageName] = newStats
+                    }
+                }
+            }
+        }
+        return appStatsMap.values.toList()
+
+    }
+
+    private fun logUsageStats(usageStatsList: List<UsageStats>) {
+
+        Log.d("UsageTracker", "Logging usage stats:")
+        for (usageStats in usageStatsList) {
+
+            val totalTimeSeconds = usageStats.totalTimeInForeground / 1000 // Convert to seconds
+            val hours = totalTimeSeconds / 3600
+            val minutes = (totalTimeSeconds % 3600) / 60
+            val seconds = totalTimeSeconds % 60
+
+            val firstTime = (Calendar.getInstance().timeInMillis - usageStats.firstTimeStamp) / 60000
+            val lastTime = (Calendar.getInstance().timeInMillis - usageStats.lastTimeStamp) / 60000
+
+            Log.d(
+                "UsageTracker",
+                "Package: ${usageStats.packageName}, First Time: $firstTime minutes ago, Last Time: $lastTime minutes ago, Total Time: $hours hours, $minutes minutes, $seconds seconds"
+            )
+        }
     }
 
     private fun checkCombinedUsageThresholds(
