@@ -1,5 +1,6 @@
 package fi.idk.kotivaloscreenshame
 
+import android.content.SharedPreferences
 import android.os.Bundle
 import android.widget.Button
 import android.widget.Toast
@@ -12,17 +13,21 @@ class AppSelectionActivity : AppCompatActivity() {
     private lateinit var recyclerView: RecyclerView
     private lateinit var adapter: AppAdapter
     private lateinit var saveButton: Button
+
+    private lateinit var trackPreferences: SharedPreferences
     private val selectedApps = mutableSetOf<String>() // Package names
+    private val selectedPackagesKey = "selected_packages"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_app_selection)
 
+        trackPreferences = getSharedPreferences("track_preferences", MODE_PRIVATE)
+
         recyclerView = findViewById(R.id.recyclerView)
         saveButton = findViewById(R.id.saveButton)
 
-        val prefs = getSharedPreferences("tracked_apps", MODE_PRIVATE)
-        val savedPackages = prefs.getStringSet("selected_packages", emptySet()) ?: emptySet()
+        val savedPackages = trackPreferences.getStringSet(selectedPackagesKey, emptySet()) ?: emptySet()
 
         val appHelper = AppHelper(this)
         val apps = appHelper.getApps()
@@ -58,11 +63,10 @@ class AppSelectionActivity : AppCompatActivity() {
     }
 
     private fun saveSelectedApps() {
-        val prefs = getSharedPreferences("tracked_apps", MODE_PRIVATE)
-        prefs.edit() {
+        trackPreferences.edit() {
             // Save the selected apps (package names) to SharedPreferences
             val selectedPackages = selectedApps.toSet()  // Convert to a set to avoid duplicates
-            putStringSet("selected_packages", selectedPackages)
+            putStringSet(selectedPackagesKey, selectedPackages)
             apply()
         }
     }

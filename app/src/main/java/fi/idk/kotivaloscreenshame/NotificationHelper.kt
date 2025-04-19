@@ -51,6 +51,16 @@ class NotificationHelper(private val context: Context) {
         sendNotification(appNames.hashCode(), "Kotivalo is not pleased!", message, R.drawable.kotivalo4_icon, android.R.drawable.ic_dialog_alert)
     }
 
+    fun sendDebugNotification(usageStats: List<UsageStats>, latestSeverity: Int) {
+        val maxTime = (usageStats.maxOfOrNull { it.totalTimeInForeground } ?: 0) / (1000 * 60)
+        val totalMinutes = usageStats.sumOf { it.totalTimeInForeground } / (1000 * 60)
+
+        val message = "Debug Notification: Max time: $maxTime, Total time: $totalMinutes, Severity: $latestSeverity"
+        // Random notification ID for debug purposes
+        val notificationId = (0..99999999999).random()
+        sendNotification(notificationId.toInt(), "Debug Notification", message, R.drawable.kotivalo12, android.R.drawable.ic_dialog_alert)
+    }
+
     private fun sendNotification(notificationId: Int, title: String, message: String, image: Int, icon: Int) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS)

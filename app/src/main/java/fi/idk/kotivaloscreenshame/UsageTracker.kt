@@ -14,11 +14,12 @@ class UsageTracker(private val context: Context) {
     private val usageStatsManager =
         context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
     private val notifier = NotificationHelper(context)
-    private val sharedPreferences =
-        context.getSharedPreferences("tracked_apps", Context.MODE_PRIVATE)
-    private val notifiedPrefs =
-        context.getSharedPreferences("already_notified", Context.MODE_PRIVATE)
-    private val severityKey = "severity"
+    private val trackPreferences =
+        context.getSharedPreferences("track_preferences", Context.MODE_PRIVATE)
+    private val alreadyNotifiedKey = "already_notified"
+    private val lastResetTimeKey = "last_reset_time"
+    private val selectedPackagesKey = "selected_packages"
+    private val debugEnabledKey = "debug_enabled"
 
     private val singleAppThresholds = listOf(
         UsageThreshold(
@@ -67,18 +68,13 @@ class UsageTracker(private val context: Context) {
     )
 
     private val trackedPackages: Set<String>
-        get() = sharedPreferences.getStringSet("selected_packages", emptySet()) ?: emptySet()
+        get() = trackPreferences.getStringSet(selectedPackagesKey, emptySet()) ?: emptySet()
 
-    suspend fun checkAppUsage() {
+    fun checkAppUsage() {
         Log.d("UsageTracker", "App usage...")
         val calendar = Calendar.getInstance()
         val endTime: Long = calendar.timeInMillis
-        val startTime: Long = calendar.apply {
-            set(Calendar.HOUR_OF_DAY, 0)
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-        }.timeInMillis
+        val startTime: Long = getLastResetTime()
 
         val query: UsageEventsQuery = UsageEventsQuery.Builder(startTime, endTime)
             .setPackageNames(*trackedPackages.toTypedArray())
@@ -89,11 +85,14 @@ class UsageTracker(private val context: Context) {
 
         logUsageStats(usageStatsList)
 
-        val notifiedCombined = checkCombinedUsageThresholds(usageStatsList)
-        if (notifiedCombined) {
-            return
+        if (isDebugEnabled()) {
+            Log.d("UsageTracker", "Debug mode enabled, sending debug notification.")
+            notifier.sendDebugNotification(usageStatsList, getLastNotifiedSeverity())
         }
-        checkSingleAppUsageThresholds(usageStatsList)
+        val notifiedAny = checkCombinedUsageThresholds(usageStatsList)
+        if (!notifiedAny) {
+            checkSingleAppUsageThresholds(usageStatsList)
+        }
     }
 
     private fun constructUsageStats(usageEvents: UsageEvents): List<UsageStats> {
@@ -204,17 +203,32 @@ class UsageTracker(private val context: Context) {
         return true
     }
 
+    private fun isDebugEnabled(): Boolean {
+        return trackPreferences.getBoolean(debugEnabledKey, false)
+    }
+
     private fun getLastNotifiedSeverity(): Int {
-        return notifiedPrefs.getInt(severityKey, 0)
+        return trackPreferences.getInt(alreadyNotifiedKey, 0)
     }
 
     private fun markNotified(severity: Int) {
-        notifiedPrefs.edit() { putInt(severityKey, severity) }
+        trackPreferences.edit() { putInt(alreadyNotifiedKey, severity) }
     }
 
     fun clearNotifications() {
         Log.d("UsageTracker", "Clearing all notifications...")
-        notifiedPrefs.edit { clear() }
+        trackPreferences.edit { putInt(alreadyNotifiedKey, 0) }
+        trackPreferences.edit { putLong(lastResetTimeKey, System.currentTimeMillis()) }
+    }
+
+    private fun getLastResetTime(): Long {
+        val lastResetTime = trackPreferences.getLong(lastResetTimeKey, 0)
+        if (lastResetTime == 0L) {
+            val currentTime = System.currentTimeMillis()
+            trackPreferences.edit { putLong(lastResetTimeKey, currentTime) }
+            return currentTime
+        }
+        return lastResetTime
     }
 
     private fun getApplicationName(packageName: String): String {

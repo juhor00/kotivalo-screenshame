@@ -7,8 +7,10 @@ import android.icu.util.Calendar
 import android.os.Bundle
 import android.provider.Settings
 import android.widget.Button
+import android.widget.Switch
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.SwitchCompat
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
@@ -16,6 +18,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import java.util.concurrent.TimeUnit
+import androidx.core.content.edit
 
 class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -63,6 +66,15 @@ class MainActivity : AppCompatActivity() {
 
             Toast.makeText(this, randomMessage, Toast.LENGTH_LONG).show()
         }
+
+        val trackPreferences = getSharedPreferences("track_preferences", Context.MODE_PRIVATE)
+        val debugEnabledKey = "debug_enabled"
+        val isDebugEnabled = trackPreferences.getBoolean(debugEnabledKey, false)
+        val debugSwitch = findViewById<Switch>(R.id.debugSwitch)
+        debugSwitch.isChecked = isDebugEnabled
+        debugSwitch.setOnCheckedChangeListener { _, isChecked ->
+            trackPreferences.edit() { putBoolean(debugEnabledKey, isChecked) }
+        }
     }
 
     private fun hasUsageStatsPermission(): Boolean {
@@ -97,16 +109,21 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun scheduleNotificationCleanup() {
+        val desiredHour = 5 // 5:00 AM
+        val desiredMinute = 0
+
         val now = Calendar.getInstance()
-        val midnight = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, 0)
-            set(Calendar.MINUTE, 0)
+        val desiredTime = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, desiredHour)
+            set(Calendar.MINUTE, desiredMinute)
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
-            add(Calendar.DAY_OF_MONTH, 1) // Move to the next day
+            if (before(now)) {
+                add(Calendar.DAY_OF_MONTH, 1) // Move to the next day if the time has already passed
+            }
         }
 
-        val initialDelay = midnight.timeInMillis - now.timeInMillis
+        val initialDelay = desiredTime.timeInMillis - now.timeInMillis
 
         val cleanupRequest = PeriodicWorkRequestBuilder<NotificationResetWorker>(
             1, TimeUnit.DAYS
