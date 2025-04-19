@@ -21,6 +21,12 @@ class UsageTracker(private val context: Context) {
     private val selectedPackagesKey = "selected_packages"
     private val debugEnabledKey = "debug_enabled"
 
+    private enum class NotifyType {
+        NOTIFIED,
+        ALREADY_NOTIFIED,
+        NOT_NOTIFIED
+    }
+
     private val singleAppThresholds = listOf(
         UsageThreshold(
             severity = 1,
@@ -152,7 +158,13 @@ class UsageTracker(private val context: Context) {
     private fun checkCombinedUsageThresholds(
         allUsageStats: List<UsageStats>
     ): Boolean {
-        return multiAppThresholds.reversed().firstOrNull {notifyCombinedAppUsage(allUsageStats, it) } != null
+        for (threshold in multiAppThresholds) {
+            val result = notifyCombinedAppUsage(allUsageStats, threshold)
+            if (result == NotifyType.NOTIFIED) return true
+            if (result == NotifyType.ALREADY_NOTIFIED) return false
+            // Continue if NOT_NOTIFIED
+        }
+        return false // If all NOT_NOTIFIED, return false
     }
 
     private fun checkSingleAppUsageThresholds(
@@ -163,44 +175,48 @@ class UsageTracker(private val context: Context) {
         if (mostUsedApp == null) {
             return false
         }
-        return singleAppThresholds.reversed().firstOrNull { notifyAppUsage(mostUsedApp, it) } != null
-
+        for (threshold in singleAppThresholds) {
+            val result = notifyAppUsage(mostUsedApp, threshold)
+            if (result == NotifyType.NOTIFIED) return true
+            if (result == NotifyType.ALREADY_NOTIFIED) return false
+            // Continue if NOT_NOTIFIED
+        }
+        return false // If all NOT_NOTIFIED, return false
     }
 
-
-    private fun notifyCombinedAppUsage(allUsageStats: List<UsageStats>, threshold: UsageThreshold): Boolean {
+    private fun notifyCombinedAppUsage(allUsageStats: List<UsageStats>, threshold: UsageThreshold): NotifyType {
         if (getLastNotifiedSeverity() >= threshold.severity) {
             Log.d("UsageTracker", "Do not notify combined app usage. Already notified for severity ${threshold.severity}.")
-            return true // This severity has already been notified, no need to check lower severities
+            return NotifyType.ALREADY_NOTIFIED
         }
 
         val totalUsageMinutes = allUsageStats.sumOf { it.totalTimeInForeground } / 60000
         if (totalUsageMinutes < threshold.minutes) {
-            return false // Maybe lower severity will be notified
+            return NotifyType.NOT_NOTIFIED
         }
 
         val appNames = allUsageStats.map { it.packageName }.map { getApplicationName(it) }
         Log.i("UsageTracker", "Notify combined app usage for severity ${threshold.severity}")
         notifier.sendCombinedNotification(appNames, threshold.severity, totalUsageMinutes)
         markNotified(threshold.severity)
-        return true
+        return NotifyType.NOTIFIED
 
     }
 
-    private fun notifyAppUsage(usage: UsageStats, threshold: UsageThreshold): Boolean {
+    private fun notifyAppUsage(usage: UsageStats, threshold: UsageThreshold): NotifyType {
         if (getLastNotifiedSeverity() >= threshold.severity) {
             Log.d("UsageTracker", "Do not notify app usage. Already notified for severity ${threshold.severity}.")
-            return true
+            return NotifyType.ALREADY_NOTIFIED
         }
         val usedMinutes = usage.totalTimeInForeground / 60000
         if (usedMinutes < threshold.minutes) {
-           return false
+           return NotifyType.NOT_NOTIFIED
         }
         val appName = getApplicationName(usage.packageName)
         Log.i("UsageTracker", "Notify app usage for severity ${threshold.severity}")
         notifier.sendNotificationForApp(appName, threshold.severity, usedMinutes)
         markNotified(threshold.severity)
-        return true
+        return NotifyType.NOTIFIED
     }
 
     private fun isDebugEnabled(): Boolean {
