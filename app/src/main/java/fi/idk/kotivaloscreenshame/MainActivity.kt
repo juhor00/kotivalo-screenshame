@@ -6,11 +6,13 @@ import android.content.Intent
 import android.icu.util.Calendar
 import android.os.Bundle
 import android.provider.Settings
+import android.view.View
 import android.widget.Button
+import android.widget.SeekBar
 import android.widget.Switch
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.widget.SwitchCompat
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
@@ -32,19 +34,23 @@ class MainActivity : AppCompatActivity() {
         scheduleTracking()
         scheduleNotificationCleanup()
 
+        configureUiElements()
+        configureDebugElements()
+        configureMockElements()
+    }
+
+    private fun configureUiElements() {
         findViewById<Button>(R.id.chooseAppsButton).setOnClickListener {
             val intent = Intent(this, AppSelectionActivity::class.java)
             startActivity(intent)
         }
 
-        val debugButton = findViewById<Button>(R.id.debugButton)
-        debugButton.setOnClickListener {
+        findViewById<Button>(R.id.debugButton).setOnClickListener {
             val debugRequest = OneTimeWorkRequestBuilder<AppUsageWorker>().build()
             WorkManager.getInstance(this).enqueue(debugRequest)
         }
 
-        val resetNotificationsButton = findViewById<Button>(R.id.resetNotificationButton)
-        resetNotificationsButton.setOnClickListener {
+        findViewById<Button>(R.id.resetNotificationButton).setOnClickListener {
             val usageTracker = UsageTracker(this)
             usageTracker.clearNotifications()
 
@@ -66,7 +72,10 @@ class MainActivity : AppCompatActivity() {
 
             Toast.makeText(this, randomMessage, Toast.LENGTH_LONG).show()
         }
+    }
 
+    private fun configureDebugElements() {
+        // Debug notifications
         val trackPreferences = getSharedPreferences("track_preferences", Context.MODE_PRIVATE)
         val debugEnabledKey = "debug_enabled"
         val isDebugEnabled = trackPreferences.getBoolean(debugEnabledKey, false)
@@ -75,6 +84,62 @@ class MainActivity : AppCompatActivity() {
         debugSwitch.setOnCheckedChangeListener { _, isChecked ->
             trackPreferences.edit() { putBoolean(debugEnabledKey, isChecked) }
         }
+    }
+
+    private fun configureMockElements() {
+        val mockSwitch = findViewById<Switch>(R.id.mockSwitch)
+        val mockTimeSeekBar = findViewById<SeekBar>(R.id.mockTimeSeekBar)
+        val mockSeveritySeekBar = findViewById<SeekBar>(R.id.mockSeveritySeekBar)
+        val mockTimeLabel = findViewById<TextView>(R.id.mockTimeLabel)
+        val mockSeverityLabel = findViewById<TextView>(R.id.mockSeverityLabel)
+
+        val preferences = getSharedPreferences("track_preferences", Context.MODE_PRIVATE)
+
+        // Restore saved state
+        val isMockEnabled = preferences.getBoolean("mock_enabled", false)
+        val savedMockTime = preferences.getInt("mock_time", 0)
+        val savedSeverity = preferences.getInt("mock_severity", 0)
+
+        mockSwitch.isChecked = isMockEnabled
+        mockTimeSeekBar.progress = savedMockTime
+        mockSeveritySeekBar.progress = savedSeverity
+
+        // Set visibility based on mock mode state
+        val visibility = if (isMockEnabled) View.VISIBLE else View.GONE
+        mockTimeSeekBar.visibility = visibility
+        mockSeveritySeekBar.visibility = visibility
+        mockTimeLabel.visibility = visibility
+        mockSeverityLabel.visibility = visibility
+
+        // Handle switch toggle
+        mockSwitch.setOnCheckedChangeListener { _, isChecked ->
+            val newVisibility = if (isChecked) View.VISIBLE else View.GONE
+            mockTimeSeekBar.visibility = newVisibility
+            mockSeveritySeekBar.visibility = newVisibility
+            mockTimeLabel.visibility = newVisibility
+            mockSeverityLabel.visibility = newVisibility
+
+            preferences.edit() { putBoolean("mock_enabled", isChecked) }
+        }
+
+        // Handle SeekBar changes
+        mockTimeSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                preferences.edit() { putInt("mock_time", progress) }
+            }
+
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+        })
+
+        mockSeveritySeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                preferences.edit() { putInt("mock_severity", progress) }
+            }
+
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+        })
     }
 
     private fun hasUsageStatsPermission(): Boolean {
@@ -103,7 +168,7 @@ class MainActivity : AppCompatActivity() {
 
         WorkManager.getInstance(this).enqueueUniquePeriodicWork(
             "AppUsageTracking",
-            ExistingPeriodicWorkPolicy.KEEP,
+            ExistingPeriodicWorkPolicy.CANCEL_AND_REENQUEUE,
             workRequest
         )
     }
@@ -139,7 +204,7 @@ class MainActivity : AppCompatActivity() {
 
         WorkManager.getInstance(this).enqueueUniquePeriodicWork(
             "NotificationReset",
-            ExistingPeriodicWorkPolicy.KEEP,
+            ExistingPeriodicWorkPolicy.CANCEL_AND_REENQUEUE,
             cleanupRequest
         )
     }

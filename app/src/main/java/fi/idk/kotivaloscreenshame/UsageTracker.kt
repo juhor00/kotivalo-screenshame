@@ -78,6 +78,21 @@ class UsageTracker(private val context: Context) {
 
     fun checkAppUsage() {
         Log.d("UsageTracker", "App usage...")
+        val isMockEnabled = trackPreferences.getBoolean("mock_enabled", false)
+        val usageStatsList: List<UsageStats> = if (isMockEnabled) getMockStats() else getUsageStats() ?: return
+        logUsageStats(usageStatsList)
+
+        if (isDebugEnabled()) {
+            Log.d("UsageTracker", "Debug mode enabled, sending debug notification.")
+            notifier.sendDebugNotification(usageStatsList, getLastNotifiedSeverity())
+        }
+        val notifiedAny = checkSingleAppUsageThresholds(usageStatsList)
+        if (!notifiedAny) {
+            checkCombinedUsageThresholds(usageStatsList)
+        }
+    }
+
+    private fun getUsageStats(): List<UsageStats>? {
         val calendar = Calendar.getInstance()
         val endTime: Long = calendar.timeInMillis
         val startTime: Long = getLastResetTime()
@@ -86,19 +101,21 @@ class UsageTracker(private val context: Context) {
             .setPackageNames(*trackedPackages.toTypedArray())
             .setEventTypes(UsageEvents.Event.ACTIVITY_RESUMED, UsageEvents.Event.ACTIVITY_PAUSED)
             .build()
-        val usageEvents: UsageEvents = usageStatsManager.queryEvents(query) ?: return
-        val usageStatsList = constructUsageStats(usageEvents)
+        val usageEvents: UsageEvents = usageStatsManager.queryEvents(query) ?: return null
+         return constructUsageStats(usageEvents)
+    }
 
-        logUsageStats(usageStatsList)
-
-        if (isDebugEnabled()) {
-            Log.d("UsageTracker", "Debug mode enabled, sending debug notification.")
-            notifier.sendDebugNotification(usageStatsList, getLastNotifiedSeverity())
-        }
-        val notifiedAny = checkCombinedUsageThresholds(usageStatsList)
-        if (!notifiedAny) {
-            checkSingleAppUsageThresholds(usageStatsList)
-        }
+    private fun getMockStats(): List<UsageStats> {
+        val mockTime = trackPreferences.getInt("mock_time", 0)
+        val mockStats = listOf(
+            UsageStats(
+                firstTimeStamp = 0,
+                lastTimeStamp = 0,
+                totalTimeInForeground = mockTime * 60 * 1000L,
+                packageName = "com.example.mockapp"
+            )
+        )
+        return mockStats
     }
 
     private fun constructUsageStats(usageEvents: UsageEvents): List<UsageStats> {
@@ -158,7 +175,7 @@ class UsageTracker(private val context: Context) {
     private fun checkCombinedUsageThresholds(
         allUsageStats: List<UsageStats>
     ): Boolean {
-        for (threshold in multiAppThresholds) {
+        for (threshold in multiAppThresholds.reversed()) {
             val result = notifyCombinedAppUsage(allUsageStats, threshold)
             if (result == NotifyType.NOTIFIED) return true
             if (result == NotifyType.ALREADY_NOTIFIED) return false
@@ -175,7 +192,7 @@ class UsageTracker(private val context: Context) {
         if (mostUsedApp == null) {
             return false
         }
-        for (threshold in singleAppThresholds) {
+        for (threshold in singleAppThresholds.reversed()) {
             val result = notifyAppUsage(mostUsedApp, threshold)
             if (result == NotifyType.NOTIFIED) return true
             if (result == NotifyType.ALREADY_NOTIFIED) return false
@@ -224,10 +241,16 @@ class UsageTracker(private val context: Context) {
     }
 
     private fun getLastNotifiedSeverity(): Int {
+        if (trackPreferences.getBoolean("mock_enabled", false)) {
+            return trackPreferences.getInt("mock_severity", 0)
+        }
         return trackPreferences.getInt(alreadyNotifiedKey, 0)
     }
 
     private fun markNotified(severity: Int) {
+        if (trackPreferences.getBoolean("mock_enabled", false)) {
+            return
+        }
         trackPreferences.edit() { putInt(alreadyNotifiedKey, severity) }
     }
 
